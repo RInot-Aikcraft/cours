@@ -1,16 +1,15 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import useUser from '@/hooks/useUser'
-import Link from 'next/link'
 
 interface Session {
   id: number
   nom: string
   dateDebut: string
   dateFin: string
-  etat: string
+  etat: 'EN_COURS' | 'TERMINEE' | 'ANNULEE' | 'REPORTER'
 }
 
 const ETATS = [
@@ -31,10 +30,12 @@ export default function EditSessionPage() {
     nom: '',
     dateDebut: '',
     dateFin: '',
-    etat: '',
+    etat: 'EN_COURS',
   })
+
   const [loadingSession, setLoadingSession] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isRedirecting, setIsRedirecting] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -47,10 +48,14 @@ export default function EditSessionPage() {
     const fetchSession = async () => {
       try {
         const token = localStorage.getItem('token')
+        if (!token) throw new Error("Token d'authentification manquant")
+
         const res = await fetch(`/api/sessions/${sessionId}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
+
         const data = await res.json()
+
         if (res.ok) {
           setFormData({
             id: data.session.id,
@@ -72,64 +77,75 @@ export default function EditSessionPage() {
     if (user?.role === 'ADMIN') fetchSession()
   }, [user, loading, router, sessionId])
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value })
-  }
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+      setFormData({ ...formData, [e.target.name]: e.target.value })
+    },
+    [formData]
+  )
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setSuccess('')
-    setIsSubmitting(true)
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault()
+      setError('')
+      setSuccess('')
+      setIsSubmitting(true)
 
-    try {
-      const token = localStorage.getItem('token')
-      const res = await fetch(`/api/sessions/${sessionId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
-      })
+      try {
+        const token = localStorage.getItem('token')
+        if (!token) throw new Error("Token d'authentification manquant")
 
-      const data = await res.json()
+        const res = await fetch(`/api/sessions/${sessionId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(formData),
+        })
 
-      if (res.ok) {
-        setSuccess('Session modifiée avec succès!')
-        setTimeout(() => {
-          router.push('/sessions')
-        }, 1500)
-      } else {
-        setError(data.error || 'Erreur lors de la modification')
+        const data = await res.json()
+
+        if (res.ok) {
+          setSuccess('Session modifiée avec succès !')
+          setIsRedirecting(true)
+          setTimeout(() => {
+            router.push('/sessions')
+          }, 1500)
+        } else {
+          setError(data.error || 'Erreur lors de la modification')
+        }
+      } catch (err) {
+        setError('Erreur réseau ou serveur')
+      } finally {
+        setIsSubmitting(false)
       }
-    } catch (err) {
-      setError('Erreur réseau ou serveur')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
+    },
+    [formData, router, sessionId]
+  )
 
   if (loading || loadingSession) {
+    return <div className="min-h-screen flex items-center justify-center"><p>Chargement...</p></div>
+  }
+  if (!user || user.role !== 'ADMIN') return null
+
+  if (isRedirecting) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Chargement...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
+        <p className="mt-4 text-gray-600">Redirection vers la liste des sessions...</p>
       </div>
     )
-  }
-
-  if (!user || user.role !== 'ADMIN') {
-    return null
   }
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-3xl mx-auto bg-white p-6 rounded shadow">
         <h1 className="text-2xl font-bold mb-6">Modifier la session</h1>
-        
-        {error && <p className="text-red-500 mb-4">{error}</p>}
-        {success && <p className="text-green-500 mb-4">{success}</p>}
-        
+
+        {error && <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">{error}</div>}
+        {success && <div className="mb-4 p-3 bg-green-100 text-green-700 rounded">{success}</div>}
+
         <form onSubmit={handleSubmit}>
           <div className="grid grid-cols-1 gap-6">
             <div>
@@ -140,8 +156,9 @@ export default function EditSessionPage() {
                 name="nom"
                 value={formData.nom}
                 onChange={handleChange}
-                className="mt-1 block w-full px-3 py-2 border rounded"
+                className="mt-1 block w-full px-3 py-2 border rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
                 required
+                disabled={isSubmitting}
               />
             </div>
 
@@ -153,8 +170,9 @@ export default function EditSessionPage() {
                 name="dateDebut"
                 value={formData.dateDebut}
                 onChange={handleChange}
-                className="mt-1 block w-full px-3 py-2 border rounded"
+                className="mt-1 block w-full px-3 py-2 border rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
                 required
+                disabled={isSubmitting}
               />
             </div>
 
@@ -166,8 +184,9 @@ export default function EditSessionPage() {
                 name="dateFin"
                 value={formData.dateFin}
                 onChange={handleChange}
-                className="mt-1 block w-full px-3 py-2 border rounded"
+                className="mt-1 block w-full px-3 py-2 border rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
                 required
+                disabled={isSubmitting}
               />
             </div>
 
@@ -178,7 +197,8 @@ export default function EditSessionPage() {
                 name="etat"
                 value={formData.etat}
                 onChange={handleChange}
-                className="mt-1 block w-full px-3 py-2 border rounded"
+                className="mt-1 block w-full px-3 py-2 border rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                disabled={isSubmitting}
               >
                 {ETATS.map((etat) => (
                   <option key={etat.value} value={etat.value}>

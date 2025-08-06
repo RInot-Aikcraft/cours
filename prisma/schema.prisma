@@ -33,6 +33,7 @@ model Student {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Inscription   Inscription[]
 }
 
 model Session {
@@ -43,6 +44,8 @@ model Session {
   etat      Etat     @default(EN_COURS)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  niveaux   Niveau[]
 }
 
 enum Role {
@@ -62,4 +65,59 @@ enum Etat {
   TERMINEE
   ANNULEE
   REPORTER
+}
+
+
+
+model Niveau {
+  id        Int      @id @default(autoincrement())
+  nom       String
+  sessionId Int
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sessionId, nom])
+
+  Groupe    Groupe[]
+}
+
+model Groupe {
+  id        Int      @id @default(autoincrement())
+  nom       String
+  effectif   Int
+  type      Type     @default(LOCAL)
+  niveauId  Int
+  niveau    Niveau   @relation(fields: [niveauId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  Inscription Inscription[]
+
+  @@unique([niveauId, nom])
+}
+
+enum Type {
+  LOCAL
+  EN_LIGNE
+  HYBRIDE
+}
+
+model Inscription {
+  id           Int      @id @default(autoincrement())
+  groupeId     Int
+  eleveId      Int
+  matricule     String   @unique
+  etatFrais    EtatFrais @default(NON_PAYE)
+  dateInscription DateTime @default(now())
+  
+  groupe       Groupe   @relation(fields: [groupeId], references: [id], onDelete: Cascade)
+  eleve        Student  @relation(fields: [eleveId], references: [id], onDelete: Cascade)
+  
+  @@unique([groupeId, eleveId])
+}
+
+enum EtatFrais {
+  PAYE
+  NON_PAYE
+  PARTIEL
 }

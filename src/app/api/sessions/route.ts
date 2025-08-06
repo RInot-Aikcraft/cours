@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken'
 const prisma = new PrismaClient()
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret'
 
+
 export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get('Authorization')
@@ -15,7 +16,15 @@ export async function GET(request: NextRequest) {
     const token = authHeader.split(' ')[1]
     jwt.verify(token, JWT_SECRET)
 
+    // Récupérer les paramètres de l'URL
+    const { searchParams } = new URL(request.url)
+    const etat = searchParams.get('etat')
+
+    // Construire la clause where pour le filtre
+    const where = etat ? { etat } : {}
+
     const sessions = await prisma.session.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
     })
 
